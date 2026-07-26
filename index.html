@@ -1,0 +1,1650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Signature Crop — Extract &amp; Resize for Form Upload</title>
+<style>
+  :root{
+    --paper:#F7F3EA;
+    --paper-dim:#EFE9DA;
+    --ink:#1C2A44;
+    --ink-soft:#4A5568;
+    --blue:#2F5EA8;
+    --blue-dim:#DCE6F4;
+    --line:#C9BFA8;
+    --rule:#8A8060;
+    --warn:#AE4A2C;
+    --ok:#2F7A4F;
+    --mono: 'JetBrains Mono', 'Courier New', monospace;
+    --serif: 'Source Serif 4', Georgia, 'Times New Roman', serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:var(--mono);
+    min-height:100vh;
+  }
+  @font-face{
+    font-family:'Source Serif 4';
+    src:local('Georgia');
+  }
+  .frame{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 24px 60px;
+  }
+  header{
+    display:flex;
+    align-items:baseline;
+    justify-content:space-between;
+    border-bottom:2px solid var(--ink);
+    padding-bottom:14px;
+    margin-bottom:22px;
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  header .title{
+    font-family:var(--serif);
+    font-size:26px;
+    letter-spacing:0.3px;
+    font-weight:600;
+  }
+  header .title small{
+    display:block;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-top:3px;
+  }
+  header .stamp{
+    font-size:11px;
+    letter-spacing:1px;
+    color:var(--blue);
+    border:1px solid var(--blue);
+    padding:5px 10px;
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:1.35fr 1fr;
+    gap:28px;
+  }
+  @media (max-width:860px){
+    .grid{grid-template-columns:1fr;}
+  }
+
+  .panel{
+    background:#fff;
+    border:1px solid var(--line);
+  }
+  .panel-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 14px;
+    background:var(--ink);
+    color:var(--paper);
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+  }
+  .panel-body{
+    padding:16px;
+  }
+
+  /* ---- upload zone ---- */
+  #dropzone{
+    border:2px dashed var(--line);
+    padding:36px 16px;
+    text-align:center;
+    cursor:pointer;
+    color:var(--ink-soft);
+    font-size:13px;
+    transition:border-color .15s, background .15s;
+  }
+  #dropzone:hover, #dropzone.drag{
+    border-color:var(--blue);
+    background:var(--blue-dim);
+  }
+  #dropzone .big{
+    font-family:var(--serif);
+    font-size:17px;
+    color:var(--ink);
+    display:block;
+    margin-bottom:6px;
+  }
+  #fileInput{display:none;}
+
+  #directoryList{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    margin:12px 0 4px;
+  }
+  #directoryList:empty{display:none;}
+  .dir-item{
+    width:88px;
+    border:1px solid var(--line);
+    background:#fff;
+    cursor:pointer;
+    overflow:hidden;
+    font-size:9px;
+  }
+  .dir-item.active{border:2px solid var(--blue);}
+  .dir-item.done{border-color:var(--ok);}
+  .dir-item img{width:100%; height:64px; object-fit:cover; display:block;}
+  .dir-meta{padding:4px 5px;}
+  .dir-type{display:block; letter-spacing:0.3px; cursor:pointer;}
+  .dir-type:hover{color:var(--blue);}
+  .dir-status{display:block; color:var(--ink-soft); margin-top:2px;}
+  .dir-item.done .dir-status{color:var(--ok); font-weight:600;}
+
+  /* ---- crop stage ---- */
+  #stage-wrap{
+    display:none;
+  }
+  #stage-wrap.active{display:block;}
+  .stage-toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-bottom:8px;
+    letter-spacing:0.5px;
+  }
+  .stage-toolbar button{
+    font-family:var(--mono);
+    font-size:11px;
+    background:none;
+    border:1px solid var(--line);
+    padding:4px 9px;
+    cursor:pointer;
+    color:var(--ink);
+  }
+  .stage-toolbar button:hover{border-color:var(--blue); color:var(--blue);}
+
+  #typeToggleRow{
+    display:none;
+    gap:8px;
+    margin-top:10px;
+    margin-bottom:4px;
+  }
+  #typeToggleRow button{
+    flex:1;
+    font-family:var(--mono);
+    font-size:11px;
+    letter-spacing:0.5px;
+    background:#fff;
+    border:1px solid var(--line);
+    padding:9px 10px;
+    cursor:pointer;
+    color:var(--ink-soft);
+  }
+  #typeToggleRow button.active{
+    background:var(--ink);
+    color:var(--paper);
+    border-color:var(--ink);
+  }
+  #typeToggleRow button:hover:not(.active){border-color:var(--blue); color:var(--blue);}
+
+  #canvasHolder{
+    position:relative;
+    overflow:hidden;
+    background:
+      linear-gradient(45deg, #eee 25%, transparent 25%),
+      linear-gradient(-45deg, #eee 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #eee 75%),
+      linear-gradient(-45deg, transparent 75%, #eee 75%);
+    background-size:16px 16px;
+    background-position:0 0, 0 8px, 8px -8px, -8px 0px;
+    touch-action:none;
+    max-height:520px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #srcCanvas{
+    display:block;
+    max-width:100%;
+    cursor:crosshair;
+  }
+  .crophint{
+    font-size:11px;
+    color:var(--ink-soft);
+    margin-top:8px;
+    line-height:1.5;
+  }
+  .crophint b{color:var(--ink);}
+
+  /* ---- controls ---- */
+  .field-row{
+    display:flex;
+    gap:10px;
+    margin-bottom:14px;
+  }
+  .field{
+    flex:1;
+  }
+  label{
+    display:block;
+    font-size:10px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin-bottom:5px;
+  }
+  input[type=number], select{
+    width:100%;
+    font-family:var(--mono);
+    font-size:14px;
+    padding:7px 8px;
+    border:1px solid var(--line);
+    background:var(--paper);
+    color:var(--ink);
+  }
+  input[type=number]:focus, select:focus{outline:1px solid var(--blue); border-color:var(--blue);}
+
+  hr.rule{
+    border:none;
+    border-top:1px solid var(--line);
+    margin:16px 0;
+  }
+
+  .spec-sheet{
+    font-size:12px;
+    line-height:1.9;
+  }
+  .spec-sheet div{
+    display:flex;
+    justify-content:space-between;
+    border-bottom:1px dotted var(--line);
+    padding:2px 0;
+  }
+  .spec-sheet span:first-child{color:var(--ink-soft);}
+  .spec-sheet span:last-child{color:var(--ink); font-weight:600;}
+  .spec-sheet .warn span:last-child{color:var(--warn);}
+  .spec-sheet .ok span:last-child{color:var(--ok);}
+
+  #previewBox{
+    margin-top:14px;
+    padding:14px;
+    background:var(--paper-dim);
+    border:1px solid var(--line);
+    text-align:center;
+  }
+  #previewImg{
+    background:#fff;
+    box-shadow:0 0 0 1px var(--line);
+    image-rendering:pixelated;
+  }
+  #previewCaption{
+    font-size:10px;
+    color:var(--ink-soft);
+    margin-top:8px;
+    letter-spacing:0.5px;
+  }
+
+  .btn-primary{
+    width:100%;
+    margin-top:16px;
+    padding:12px;
+    background:var(--ink);
+    color:var(--paper);
+    border:none;
+    font-family:var(--mono);
+    font-size:12px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .btn-primary:hover{background:var(--blue);}
+  .btn-primary:disabled{background:var(--line); cursor:not-allowed; color:#fff;}
+
+  select.fmt{margin-bottom:0;}
+
+  /* ---- phone → laptop QR transfer ---- */
+  #qrSendBtn{background:var(--blue); margin-top:8px;}
+  .phone-modal-overlay{
+    display:none;
+    position:fixed; inset:0;
+    background:rgba(20,20,30,0.55);
+    z-index:1000;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+  }
+  .phone-modal-panel{
+    background:#fff;
+    border:1px solid var(--line);
+    max-width:320px;
+    width:100%;
+    padding:0;
+  }
+  .phone-modal-head{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 14px;
+    background:var(--ink);
+    color:var(--paper);
+    font-size:11px;
+    letter-spacing:1.5px;
+    text-transform:uppercase;
+  }
+  .phone-modal-head button{
+    background:none; border:none; color:var(--paper);
+    font-size:18px; line-height:1; cursor:pointer; padding:0;
+  }
+  #qrCanvasWrap{
+    padding:20px; text-align:center;
+  }
+  #qrCanvasWrap canvas{max-width:100%;}
+  #qrStatus, #qrReceivedList{
+    padding:0 16px 16px;
+    font-size:12px;
+    text-align:center;
+  }
+
+  body.phone-mode .frame{display:none;}
+  #phoneSendOverlay{
+    display:none;
+    position:fixed; inset:0;
+    background:var(--paper);
+    z-index:1000;
+    align-items:center;
+    justify-content:center;
+    padding:20px;
+    text-align:center;
+  }
+  .phone-send-card{max-width:360px; width:100%;}
+  .phone-send-title{
+    font-family:var(--serif);
+    font-size:22px;
+    margin-bottom:14px;
+  }
+  .phone-camera-btn{
+    display:inline-block;
+    margin-top:18px;
+    padding:22px 28px;
+    background:var(--ink);
+    color:var(--paper);
+    font-family:var(--mono);
+    font-size:15px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+    cursor:pointer;
+  }
+  .phone-camera-btn:active{background:var(--blue);}
+  #phoneSentCount{margin-top:14px; font-size:11px; color:var(--ink-soft);}
+
+  /* ---- connecting spinner + button reveal ---- */
+  #phoneConnectSpinner{
+    width:34px; height:34px;
+    margin:22px auto 4px;
+    border:3px solid var(--line);
+    border-top-color:var(--blue);
+    border-radius:50%;
+    animation:phoneSpin .8s linear infinite;
+  }
+  @keyframes phoneSpin{ to{ transform:rotate(360deg); } }
+  #phoneActionButtons{
+    max-height:0;
+    opacity:0;
+    overflow:hidden;
+    transition:opacity .35s ease, max-height .35s ease;
+  }
+  #phoneActionButtons.ready{
+    max-height:260px;
+    opacity:1;
+  }
+  #phoneSendStatus.status-error{ color:var(--warn); }
+  #phoneSendStatus.status-ok{ color:var(--ok); }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <header>
+    <div class="title">Signature Crop<small>Extract · Resize · Compress for form upload</small></div>
+    <div class="stamp">No upload leaves this browser</div>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT: source + crop -->
+    <div class="panel">
+      <div class="panel-head"><span>01 · Source image</span><span id="srcDims"></span></div>
+      <div class="panel-body">
+
+        <div id="folderWatch">
+          <button id="addFilesBtn" class="btn-primary" style="margin-top:0;">+ Add photo(s)</button>
+          <input type="file" id="fileInput" accept="image/*" multiple>
+          <button id="qrSendBtn" class="btn-primary">📱 Send from phone (QR code)</button>
+        </div>
+
+        <div id="directoryList"></div>
+
+        <div id="typeToggleRow">
+          <button id="markSigBtn">✍️ This is a Signature</button>
+          <button id="markPhotoBtn">👤 This is a Passport Photo</button>
+        </div>
+
+        <div id="dropzone" style="margin-top:12px;">
+          <span class="big">Drop photos here</span>
+          or click to browse — signatures and passport photo, 3 or more
+        </div>
+
+        <div id="stage-wrap">
+          <div class="stage-toolbar">
+            <span>Drag the box to move it · drag the corner to resize</span>
+            <span style="display:flex; gap:8px;">
+              <button id="autoDetectBtn">Auto-detect signature</button>
+              <button id="resetImgBtn">Remove this photo</button>
+            </span>
+          </div>
+          <div class="crophint" id="detectStatus" style="display:none; color:var(--blue);"></div>
+          <div id="canvasHolder">
+            <canvas id="srcCanvas"></canvas>
+          </div>
+          <div class="crophint">Box locked to <b id="ratioLabel">—</b> aspect ratio, matching the size selected on the right.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT: controls -->
+    <div class="panel">
+      <div class="panel-head"><span>02 · Output specification</span></div>
+      <div class="panel-body">
+
+        <div id="editingTypeLabel" class="crophint" style="font-weight:700; font-size:13px; color:var(--ink); margin-bottom:14px; padding:8px 10px; background:var(--paper-dim); border:1px solid var(--line);">No photo selected</div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="sizeSelect">Size</label>
+            <select id="sizeSelect">
+              <option value="300x80">300 × 80 px</option>
+              <option value="300x150">300 × 150 px</option>
+              <option value="300x300">300 × 300 px</option>
+              <option value="320x320">320 × 320 px</option>
+              <option value="350x350">350 × 350 px</option>
+              <option value="400x400">400 × 400 px</option>
+              <option value="200x200">200 × 200 px</option>
+              <option value="custom">Custom…</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field-row" id="customDims" style="display:none;">
+          <div class="field">
+            <label for="wIn">Width (px)</label>
+            <input type="number" id="wIn" min="10" max="4000" value="300">
+          </div>
+          <div class="field">
+            <label for="hIn">Height (px)</label>
+            <input type="number" id="hIn" min="10" max="4000" value="80">
+          </div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label for="fmtIn">File format</label>
+            <select id="fmtIn" class="fmt">
+              <option value="image/jpeg">JPEG</option>
+              <option value="image/png">PNG</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="kbMinIn">File size range (KB)</label>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <input type="number" id="kbMinIn" min="1" max="5000" value="20" style="width:70px;">
+              <span style="font-size:11px; color:var(--ink-soft);">to</span>
+              <input type="number" id="kbMaxIn" min="1" max="5000" value="100" style="width:70px;">
+            </div>
+          </div>
+        </div>
+
+        <hr class="rule">
+
+        <div class="spec-sheet" id="specSheet">
+          <div><span>Output dimensions</span><span id="spDims">—</span></div>
+          <div><span>Format</span><span id="spFmt">—</span></div>
+          <div class="ok"><span>Estimated file size</span><span id="spSize">—</span></div>
+        </div>
+
+        <div id="previewBox" style="display:none;">
+          <img id="previewImg" alt="Cropped signature preview">
+          <div id="previewCaption"></div>
+        </div>
+
+        <button class="btn-primary" id="saveCropBtn" disabled>✓ Save this crop to output</button>
+
+        <hr class="rule">
+
+        <div class="panel-head" style="margin:0 0 12px; margin-left:-16px; margin-right:-16px; width:calc(100% + 32px);"><span>03 · Output (folder)</span></div>
+        <div id="outputSummary" class="crophint">0 of 0 photos saved. Need at least 3 to download.</div>
+        <button class="btn-primary" id="downloadAllBtn" disabled>⬇ Download all photos</button>
+        <div id="changeFolderLink" class="crophint" style="display:none; text-align:center; cursor:pointer; text-decoration:underline; margin-top:6px;">📁 Change save folder</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="qrModal" class="phone-modal-overlay">
+  <div class="phone-modal-panel">
+    <div class="phone-modal-head"><span>Scan with your phone</span><button id="qrCloseBtn">&times;</button></div>
+    <div id="qrCanvasWrap"><canvas id="qrCanvas"></canvas></div>
+    <div id="qrStatus" class="crophint">Generating code…</div>
+  </div>
+</div>
+
+<div id="phoneSendOverlay">
+  <div class="phone-send-card">
+    <div class="phone-send-title">Send photo to laptop</div>
+    <div id="phoneConnectSpinner"></div>
+    <div id="phoneSendStatus" class="crophint">Connecting…</div>
+    <div id="phoneActionButtons">
+      <label class="phone-camera-btn" id="phoneCameraLabel">
+        📷 Take photo
+        <input type="file" id="phoneCameraInput" accept="image/*" capture="environment" style="display:none;">
+      </label>
+      <label class="phone-camera-btn" id="phoneGalleryLabel" style="background:var(--blue); margin-top:10px;">
+        🖼 Choose from gallery
+        <input type="file" id="phoneGalleryInput" accept="image/*" style="display:none;">
+      </label>
+    </div>
+    <div id="phoneSentCount" class="crophint"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrious@4.0.2/dist/qrious.min.js"></script>
+<script>
+(function(){
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const stageWrap = document.getElementById('stage-wrap');
+  const srcCanvas = document.getElementById('srcCanvas');
+  const ctx = srcCanvas.getContext('2d');
+  const canvasHolder = document.getElementById('canvasHolder');
+  const srcDimsLabel = document.getElementById('srcDims');
+  const ratioLabel = document.getElementById('ratioLabel');
+  const resetImgBtn = document.getElementById('resetImgBtn');
+  const autoDetectBtn = document.getElementById('autoDetectBtn');
+  const detectStatus = document.getElementById('detectStatus');
+
+  const wIn = document.getElementById('wIn');
+  const hIn = document.getElementById('hIn');
+  const fmtIn = document.getElementById('fmtIn');
+  const kbMinIn = document.getElementById('kbMinIn');
+  const kbMaxIn = document.getElementById('kbMaxIn');
+  const spDims = document.getElementById('spDims');
+  const spFmt = document.getElementById('spFmt');
+  const spSize = document.getElementById('spSize');
+  const previewBox = document.getElementById('previewBox');
+  const previewImg = document.getElementById('previewImg');
+  const previewCaption = document.getElementById('previewCaption');
+  const saveCropBtn = document.getElementById('saveCropBtn');
+  const addFilesBtn = document.getElementById('addFilesBtn');
+  const directoryList = document.getElementById('directoryList');
+  const outputSummary = document.getElementById('outputSummary');
+  const downloadAllBtn = document.getElementById('downloadAllBtn');
+  const changeFolderLink = document.getElementById('changeFolderLink');
+  const editingTypeLabel = document.getElementById('editingTypeLabel');
+  const typeToggleRow = document.getElementById('typeToggleRow');
+  const markSigBtn = document.getElementById('markSigBtn');
+  const markPhotoBtn = document.getElementById('markPhotoBtn');
+
+  const sizeSelect = document.getElementById('sizeSelect');
+  const customDims = document.getElementById('customDims');
+
+  const SIG_SIZES = [
+    ['300x80','300 × 80 px'],
+    ['300x150','300 × 150 px'],
+    ['300x300','300 × 300 px'],
+    ['320x320','320 × 320 px'],
+    ['350x350','350 × 350 px'],
+    ['400x400','400 × 400 px'],
+    ['200x200','200 × 200 px'],
+  ];
+  const PHOTO_SIZES = [
+    ['200x230','200 × 230 px (Passport — India)'],
+    ['350x350','350 × 350 px (Square)'],
+    ['413x531','413 × 531 px (3.5×4.5cm @300dpi)'],
+  ];
+
+  function updateSizeOptionsForType(type){
+    const list = type === 'photo' ? PHOTO_SIZES : SIG_SIZES;
+    sizeSelect.innerHTML = list.map(([v,l])=>`<option value="${v}">${l}</option>`).join('') + '<option value="custom">Custom…</option>';
+    sizeSelect.selectedIndex = 0;
+    editingTypeLabel.textContent = type === 'photo'
+      ? '👤 Editing: Passport Photo — passport size presets below'
+      : '✍️ Editing: Signature — signature size presets below';
+    applySize();
+  }
+
+  function applySize(){
+    const val = sizeSelect.value;
+    if(val === 'custom'){
+      customDims.style.display = 'flex';
+    } else {
+      customDims.style.display = 'none';
+      const [w,h] = val.split('x').map(Number);
+      wIn.value = w; hIn.value = h;
+    }
+    onSpecChange();
+  }
+  sizeSelect.addEventListener('change', applySize);
+
+  // ---------- multi-photo directory ----------
+  let img = null;
+  let displayScale = 1;
+  let box = {x:0,y:0,w:100,h:100};
+  let items = [];    // {id, file, img, type, thumbURL, box, outputBlob, outputExt, done}
+  let activeId = null;
+
+  function uid(){ return 'i' + Math.random().toString(36).slice(2,9); }
+
+  // heuristic classifier: signatures are near-grayscale ink on a plain
+  // background; photos have noticeably more color saturation
+  function classifyImage(imgEl){
+    const w = imgEl.naturalWidth, h = imgEl.naturalHeight;
+    const sw = 64, sh = Math.max(1, Math.round(64*h/w));
+    const c = document.createElement('canvas'); c.width = sw; c.height = sh;
+    const cx = c.getContext('2d');
+    cx.drawImage(imgEl, 0, 0, sw, sh);
+    const data = cx.getImageData(0,0,sw,sh).data;
+    let satSum = 0, n = 0;
+    for(let i=0;i<data.length;i+=4){
+      const r=data[i]/255, g=data[i+1]/255, b=data[i+2]/255;
+      const max=Math.max(r,g,b), min=Math.min(r,g,b);
+      satSum += max===0 ? 0 : (max-min)/max;
+      n++;
+    }
+    const avgSat = satSum/n;
+    const aspect = w/h;
+    let score = 0;
+    if(avgSat > 0.10) score++;
+    if(aspect > 0.55 && aspect < 1.5) score++;
+    return score >= 1 ? 'photo' : 'signature';
+  }
+
+  function addItem(file){
+    if(!file || (file.type && !file.type.startsWith('image/'))) return;
+    const reader = new FileReader();
+    reader.onload = e=>{
+      const im = new Image();
+      im.onload = ()=>{
+        const type = classifyImage(im);
+        const it = { id:uid(), file, img:im, type, thumbURL:e.target.result, box:null, outputBlob:null, outputExt:null, done:false };
+        items.push(it);
+        renderDirectory();
+        updateOutputSummary();
+        if(!activeId) selectItem(it.id);
+      };
+      im.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function renderDirectory(){
+    directoryList.innerHTML = '';
+    items.forEach(it=>{
+      const el = document.createElement('div');
+      el.className = 'dir-item' + (it.id===activeId?' active':'') + (it.done?' done':'');
+      const typeLabel = it.type === 'photo' ? '👤 Photo' : '✍️ Signature';
+      el.innerHTML = `
+        <img src="${it.thumbURL}">
+        <div class="dir-meta">
+          <span class="dir-type" title="Click to switch type">${typeLabel}</span>
+          <span class="dir-status">${it.done ? '✓ Done' : 'Pending'}</span>
+        </div>`;
+      el.querySelector('.dir-type').addEventListener('click', (ev)=>{
+        ev.stopPropagation();
+        it.type = it.type === 'photo' ? 'signature' : 'photo';
+        it.box = null; // reframe fresh for the new type
+        renderDirectory();
+        if(it.id === activeId) selectItem(it.id, true);
+      });
+      el.addEventListener('click', ()=>selectItem(it.id));
+      directoryList.appendChild(el);
+    });
+  }
+
+  function updateOutputSummary(){
+    const total = items.length;
+    const done = items.filter(x=>x.done).length;
+    outputSummary.textContent = total === 0
+      ? '0 of 0 photos saved. Need at least 3 to download.'
+      : `${done} of ${total} photo${total===1?'':'s'} saved. ${done<3 ? `Need at least 3 to download (currently ${done}).` : 'Ready to download.'}`;
+    downloadAllBtn.disabled = done < 3;
+  }
+
+  function selectItem(id, forceReframe){
+    const it = items.find(x=>x.id===id);
+    if(!it) return;
+    activeId = id;
+    img = it.img;
+
+    dropzone.style.display = 'none';
+    stageWrap.classList.add('active');
+    detectStatus.style.display = 'none';
+    autoDetectBtn.textContent = it.type === 'photo' ? 'Auto-frame photo' : 'Auto-detect signature';
+
+    typeToggleRow.style.display = 'flex';
+    markSigBtn.classList.toggle('active', it.type !== 'photo');
+    markPhotoBtn.classList.toggle('active', it.type === 'photo');
+
+    const MAX_DIM = 1600;
+    let nw = img.naturalWidth, nh = img.naturalHeight;
+    const scale = Math.min(1, MAX_DIM / Math.max(nw, nh));
+    nw = Math.round(nw*scale); nh = Math.round(nh*scale);
+    srcCanvas.width = nw; srcCanvas.height = nh;
+    ctx.drawImage(img, 0, 0, nw, nh);
+    srcDimsLabel.textContent = `${img.naturalWidth}×${img.naturalHeight}px original — ${it.type==='photo' ? 'Passport photo' : 'Signature'}`;
+
+    updateSizeOptionsForType(it.type);
+
+    if(it.box && !forceReframe){
+      box = {...it.box};
+      clampBox();
+      drawOverlay();
+      generatePreview();
+    } else if(it.type === 'photo'){
+      autoFramePhoto();
+    } else {
+      initBox();
+      drawOverlay();
+      generatePreview();
+    }
+    saveCropBtn.disabled = false;
+    renderDirectory();
+  }
+
+  function setActiveItemType(newType){
+    const it = items.find(x=>x.id===activeId);
+    if(!it || it.type === newType) return;
+    it.type = newType;
+    it.box = null; // reframe fresh for the new type
+    selectItem(it.id, true);
+  }
+  markSigBtn.addEventListener('click', ()=>setActiveItemType('signature'));
+  markPhotoBtn.addEventListener('click', ()=>setActiveItemType('photo'));
+
+  addFilesBtn.addEventListener('click', ()=>fileInput.click());
+  fileInput.addEventListener('change', e=>{
+    Array.from(e.target.files).forEach(addItem);
+    fileInput.value = '';
+  });
+  dropzone.addEventListener('click', ()=>fileInput.click());
+  ['dragover','dragenter'].forEach(ev=>dropzone.addEventListener(ev, e=>{e.preventDefault(); dropzone.classList.add('drag');}));
+  ['dragleave','dragend','drop'].forEach(ev=>dropzone.addEventListener(ev, e=>{e.preventDefault(); dropzone.classList.remove('drag');}));
+  dropzone.addEventListener('drop', e=>{
+    e.preventDefault();
+    if(e.dataTransfer.files) Array.from(e.dataTransfer.files).forEach(addItem);
+  });
+
+  resetImgBtn.addEventListener('click', ()=>{
+    if(!activeId) return;
+    items = items.filter(x=>x.id!==activeId);
+    activeId = null;
+    if(items.length){
+      selectItem(items[0].id);
+    } else {
+      img = null;
+      stageWrap.classList.remove('active');
+      dropzone.style.display = 'block';
+      previewBox.style.display = 'none';
+      spSize.textContent = '—';
+      saveCropBtn.disabled = true;
+      editingTypeLabel.textContent = 'No photo selected';
+      typeToggleRow.style.display = 'none';
+    }
+    renderDirectory();
+    updateOutputSummary();
+  });
+
+  saveCropBtn.addEventListener('click', ()=>{
+    if(!currentBlob || !activeId) return;
+    const it = items.find(x=>x.id===activeId);
+    if(!it) return;
+    it.outputBlob = currentBlob;
+    it.outputExt = fmtIn.value === 'image/png' ? 'png' : 'jpg';
+    it.box = {...box};
+    it.done = true;
+    renderDirectory();
+    updateOutputSummary();
+    const next = items.find(x=>!x.done && x.id!==it.id);
+    if(next) selectItem(next.id);
+  });
+
+  // ---------- remembered download folder (asks once, then never again) ----------
+  const DB_NAME = 'sigcrop-db', STORE_NAME = 'handles';
+  function openDB(){
+    return new Promise((resolve,reject)=>{
+      const req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = ()=>{ req.result.createObjectStore(STORE_NAME); };
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  async function idbGet(key){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_NAME,'readonly');
+      const req = tx.objectStore(STORE_NAME).get(key);
+      req.onsuccess = ()=>resolve(req.result);
+      req.onerror = ()=>reject(req.error);
+    });
+  }
+  async function idbSet(key,val){
+    const db = await openDB();
+    return new Promise((resolve,reject)=>{
+      const tx = db.transaction(STORE_NAME,'readwrite');
+      tx.objectStore(STORE_NAME).put(val,key);
+      tx.oncomplete = ()=>resolve();
+      tx.onerror = ()=>reject(tx.error);
+    });
+  }
+
+  async function getDownloadFolder(forcePrompt){
+    if(!window.showDirectoryPicker) return null; // Safari/Firefox — no folder-write support
+    if(!forcePrompt){
+      try{
+        const saved = await idbGet('downloadDir');
+        if(saved){
+          let perm = await saved.queryPermission({mode:'readwrite'});
+          if(perm !== 'granted') perm = await saved.requestPermission({mode:'readwrite'});
+          if(perm === 'granted') return saved;
+        }
+      }catch(e){ /* saved handle invalid — fall through to a fresh picker */ }
+    }
+    try{
+      const handle = await window.showDirectoryPicker({mode:'readwrite'});
+      await idbSet('downloadDir', handle);
+      return handle;
+    }catch(e){
+      return null; // user cancelled the one-time picker
+    }
+  }
+
+  changeFolderLink.addEventListener('click', async ()=>{
+    const handle = await getDownloadFolder(true);
+    if(handle) outputSummary.textContent = 'Save folder updated ✓ — next download will use it, no prompt.';
+  });
+
+  downloadAllBtn.addEventListener('click', async ()=>{
+    const doneItems = items.filter(x=>x.done);
+    if(doneItems.length < 3) return;
+
+    let sigCount = 0, photoCount = 0;
+    const named = doneItems.map(it=>{
+      let name;
+      if(it.type === 'photo'){ photoCount++; name = photoCount===1 ? 'passport-photo' : `passport-photo-${photoCount}`; }
+      else { sigCount++; name = `signature-${sigCount}`; }
+      return { name: `${name}.${it.outputExt}`, blob: it.outputBlob };
+    });
+
+    const rootHandle = await getDownloadFolder(false);
+    const BATCH_KEY = 'sigcrop_batchCounter';
+
+    if(rootHandle){
+      const batchNum = parseInt(localStorage.getItem(BATCH_KEY) || '1', 10);
+      const subfolderName = `batch-${batchNum}`;
+      try{
+        const subDir = await rootHandle.getDirectoryHandle(subfolderName, {create:true});
+        for(const f of named){
+          const fileHandle = await subDir.getFileHandle(f.name, {create:true});
+          const writable = await fileHandle.createWritable();
+          await writable.write(f.blob);
+          await writable.close();
+        }
+        localStorage.setItem(BATCH_KEY, String(batchNum + 1));
+
+        // clear just the items that were saved, so the next 3 photos start a fresh batch
+        const doneIds = new Set(doneItems.map(x=>x.id));
+        items = items.filter(x=>!doneIds.has(x.id));
+        if(activeId && doneIds.has(activeId)) activeId = null;
+        if(items.length){
+          selectItem(items[0].id);
+        } else {
+          img = null;
+          stageWrap.classList.remove('active');
+          dropzone.style.display = 'block';
+          previewBox.style.display = 'none';
+          saveCropBtn.disabled = true;
+          editingTypeLabel.textContent = 'No photo selected';
+          typeToggleRow.style.display = 'none';
+        }
+        renderDirectory();
+        updateOutputSummary();
+        outputSummary.textContent = `Saved to folder "${subfolderName}" ✓ — add your next 3 photos, they'll go into "batch-${batchNum+1}".`;
+        changeFolderLink.style.display = 'block';
+        return;
+      }catch(err){
+        // fall through to flat fallback below
+      }
+    }
+
+    // fallback for browsers without folder-write support: plain sequential downloads
+    // (can't guarantee a distinct subfolder per batch here — just individual files)
+    for(const f of named){
+      const url = URL.createObjectURL(f.blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = f.name;
+      document.body.appendChild(a); a.click(); a.remove();
+      await new Promise(r=>setTimeout(r, 400));
+      URL.revokeObjectURL(url);
+    }
+    outputSummary.textContent = `Downloaded ${named.length} files to your browser's Downloads folder ✓`;
+  });
+
+  function currentRatio(){
+    const w = parseFloat(wIn.value) || 1;
+    const h = parseFloat(hIn.value) || 1;
+    return w/h;
+  }
+
+  function initBox(){
+    const cw = srcCanvas.width, ch = srcCanvas.height;
+    const ratio = currentRatio();
+    let bw = cw * 0.6;
+    let bh = bw / ratio;
+    if(bh > ch * 0.9){
+      bh = ch * 0.9;
+      bw = bh * ratio;
+    }
+    box = { x:(cw-bw)/2, y:(ch-bh)/2, w:bw, h:bh };
+    ratioLabel.textContent = `${wIn.value}:${hIn.value}`;
+  }
+
+  function clampBox(){
+    box.w = Math.min(box.w, srcCanvas.width);
+    box.h = Math.min(box.h, srcCanvas.height);
+    box.x = Math.max(0, Math.min(box.x, srcCanvas.width - box.w));
+    box.y = Math.max(0, Math.min(box.y, srcCanvas.height - box.h));
+  }
+
+  function drawOverlay(){
+    if(!img) return;
+    ctx.clearRect(0,0,srcCanvas.width, srcCanvas.height);
+    ctx.drawImage(img, 0, 0, srcCanvas.width, srcCanvas.height);
+
+    // dim outside
+    ctx.fillStyle = 'rgba(20,20,30,0.45)';
+    ctx.fillRect(0,0,srcCanvas.width, box.y);
+    ctx.fillRect(0, box.y+box.h, srcCanvas.width, srcCanvas.height-box.y-box.h);
+    ctx.fillRect(0, box.y, box.x, box.h);
+    ctx.fillRect(box.x+box.w, box.y, srcCanvas.width-box.x-box.w, box.h);
+
+    // box border
+    ctx.strokeStyle = '#2F5EA8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(box.x, box.y, box.w, box.h);
+
+    // crosshair guides (thirds)
+    ctx.strokeStyle = 'rgba(47,94,168,0.5)';
+    ctx.lineWidth = 1;
+    for(let i=1;i<3;i++){
+      const gx = box.x + box.w*i/3;
+      ctx.beginPath(); ctx.moveTo(gx, box.y); ctx.lineTo(gx, box.y+box.h); ctx.stroke();
+      const gy = box.y + box.h*i/3;
+      ctx.beginPath(); ctx.moveTo(box.x, gy); ctx.lineTo(box.x+box.w, gy); ctx.stroke();
+    }
+
+    // corner resize handle (bottom-right)
+    const hs = 14;
+    ctx.fillStyle = '#2F5EA8';
+    ctx.fillRect(box.x+box.w-hs/2, box.y+box.h-hs/2, hs, hs);
+  }
+
+  // ---------- auto-detect signature (ink vs background) ----------
+  function otsuThreshold(gray){
+    const hist = new Array(256).fill(0);
+    for(let i=0;i<gray.length;i++) hist[gray[i]]++;
+    const total = gray.length;
+    let sum=0;
+    for(let t=0;t<256;t++) sum += t*hist[t];
+    let sumB=0, wB=0, maxVar=0, threshold=140;
+    for(let t=0;t<256;t++){
+      wB += hist[t];
+      if(wB===0) continue;
+      const wF = total-wB;
+      if(wF===0) break;
+      sumB += t*hist[t];
+      const mB = sumB/wB, mF = (sum-sumB)/wF;
+      const v = wB*wF*(mB-mF)*(mB-mF);
+      if(v>maxVar){ maxVar=v; threshold=t; }
+    }
+    return threshold;
+  }
+
+  function autoDetectSignature(){
+    if(!img) return;
+    detectStatus.style.display = 'block';
+    detectStatus.textContent = 'Scanning for ink strokes…';
+    setTimeout(()=>{
+      const w = srcCanvas.width, h = srcCanvas.height;
+      const tmp = document.createElement('canvas');
+      tmp.width = w; tmp.height = h;
+      const tctx = tmp.getContext('2d');
+      tctx.drawImage(img, 0, 0, w, h);
+      const data = tctx.getImageData(0,0,w,h).data;
+
+      const gray = new Uint8ClampedArray(w*h);
+      for(let i=0;i<w*h;i++){
+        gray[i] = 0.299*data[i*4] + 0.587*data[i*4+1] + 0.114*data[i*4+2];
+      }
+      const thresh = otsuThreshold(gray);
+      // ink is darker than threshold (typical: pen on paper)
+      const darkThresh = Math.min(thresh, 200);
+
+      const block = Math.max(4, Math.round(Math.min(w,h)/140));
+      const cols = Math.ceil(w/block), rows = Math.ceil(h/block);
+      const darkBlock = new Uint8Array(cols*rows);
+      for(let by=0; by<rows; by++){
+        for(let bx=0; bx<cols; bx++){
+          let darkCount=0, total=0;
+          const x0=bx*block, y0=by*block;
+          const x1=Math.min(w,x0+block), y1=Math.min(h,y0+block);
+          for(let y=y0;y<y1;y++){
+            for(let x=x0;x<x1;x++){
+              total++;
+              if(gray[y*w+x] < darkThresh) darkCount++;
+            }
+          }
+          darkBlock[by*cols+bx] = (darkCount/total > 0.06) ? 1 : 0;
+        }
+      }
+
+      let minBX=cols, maxBX=-1, minBY=rows, maxBY=-1;
+      for(let by=0; by<rows; by++){
+        for(let bx=0; bx<cols; bx++){
+          if(darkBlock[by*cols+bx]){
+            if(bx<minBX) minBX=bx;
+            if(bx>maxBX) maxBX=bx;
+            if(by<minBY) minBY=by;
+            if(by>maxBY) maxBY=by;
+          }
+        }
+      }
+
+      if(maxBX < 0){
+        detectStatus.textContent = 'Could not find a clear ink area — adjust the box by hand.';
+        return;
+      }
+
+      let px0 = minBX*block, py0 = minBY*block;
+      let px1 = Math.min(w, (maxBX+1)*block), py1 = Math.min(h, (maxBY+1)*block);
+
+      // padding around detected ink
+      const padX = (px1-px0)*0.18, padY = (py1-py0)*0.25;
+      px0 = Math.max(0, px0-padX); py0 = Math.max(0, py0-padY);
+      px1 = Math.min(w, px1+padX); py1 = Math.min(h, py1+padY);
+
+      // fit to required aspect ratio, centered on detected region
+      const ratio = currentRatio();
+      let bw = px1-px0, bh = py1-py0;
+      const cx = (px0+px1)/2, cy = (py0+py1)/2;
+      if(bw/bh > ratio){
+        bh = bw/ratio;
+      } else {
+        bw = bh*ratio;
+      }
+      box = { x:cx-bw/2, y:cy-bh/2, w:bw, h:bh };
+      clampBox();
+      drawOverlay();
+      generatePreview();
+      detectStatus.textContent = 'Signature area detected — drag to fine-tune if needed.';
+    }, 20);
+  }
+
+  // ---------- auto-frame photo (heuristic head/shoulders guess, no real face detection) ----------
+  function autoFramePhoto(){
+    if(!img) return;
+    const w = srcCanvas.width, h = srcCanvas.height;
+    const ratio = currentRatio();
+    let bw = w * 0.62;
+    let bh = bw / ratio;
+    if(bh > h * 0.85){ bh = h * 0.85; bw = bh * ratio; }
+    const cx = w / 2;
+    const cy = h * 0.45; // slightly above vertical center — typical head/shoulders framing
+    box = { x: cx - bw/2, y: Math.max(0, cy - bh/2), w: bw, h: bh };
+    clampBox();
+    drawOverlay();
+    generatePreview();
+    detectStatus.style.display = 'block';
+    detectStatus.textContent = 'Approximate head/shoulders framing — drag to fine-tune (heuristic guess, not real face detection).';
+  }
+
+  autoDetectBtn.addEventListener('click', ()=>{
+    const it = items.find(x=>x.id===activeId);
+    if(!it) return;
+    if(it.type === 'photo') autoFramePhoto(); else autoDetectSignature();
+  });
+
+  // ---------- dragging / resizing ----------
+  let mode = null; // 'move' | 'resize'
+  let startPt = null;
+  let startBox = null;
+
+  function canvasPoint(e){
+    const rect = srcCanvas.getBoundingClientRect();
+    const scaleX = srcCanvas.width / rect.width;
+    const scaleY = srcCanvas.height / rect.height;
+    const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+    const clientY = (e.touches ? e.touches[0].clientY : e.clientY);
+    return { x:(clientX-rect.left)*scaleX, y:(clientY-rect.top)*scaleY };
+  }
+
+  function hitTest(pt){
+    const hs = 20;
+    if(Math.abs(pt.x-(box.x+box.w))<hs && Math.abs(pt.y-(box.y+box.h))<hs) return 'resize';
+    if(pt.x>=box.x && pt.x<=box.x+box.w && pt.y>=box.y && pt.y<=box.y+box.h) return 'move';
+    return null;
+  }
+
+  function pointerDown(e){
+    if(!img) return;
+    const pt = canvasPoint(e);
+    const hit = hitTest(pt);
+    if(!hit) return;
+    mode = hit;
+    startPt = pt;
+    startBox = {...box};
+    e.preventDefault();
+  }
+  function pointerMove(e){
+    if(!mode || !img) return;
+    const pt = canvasPoint(e);
+    const dx = pt.x - startPt.x, dy = pt.y - startPt.y;
+    if(mode === 'move'){
+      box.x = startBox.x + dx;
+      box.y = startBox.y + dy;
+    } else if(mode === 'resize'){
+      const ratio = currentRatio();
+      let newW = Math.max(20, startBox.w + dx);
+      let newH = newW / ratio;
+      // constrain within canvas
+      if(startBox.x + newW > srcCanvas.width) newW = srcCanvas.width - startBox.x;
+      newH = newW / ratio;
+      if(startBox.y + newH > srcCanvas.height){ newH = srcCanvas.height - startBox.y; newW = newH*ratio; }
+      box.w = newW; box.h = newH;
+    }
+    clampBox();
+    drawOverlay();
+    updateSpecLive();
+    e.preventDefault();
+  }
+  function pointerUp(){
+    mode = null;
+    if(img) generatePreview();
+  }
+
+  srcCanvas.addEventListener('mousedown', pointerDown);
+  window.addEventListener('mousemove', pointerMove);
+  window.addEventListener('mouseup', pointerUp);
+  srcCanvas.addEventListener('touchstart', pointerDown, {passive:false});
+  window.addEventListener('touchmove', pointerMove, {passive:false});
+  window.addEventListener('touchend', pointerUp);
+
+  // ---------- spec changes ----------
+  function onSpecChange(){
+    ratioLabel.textContent = `${wIn.value||0}:${hIn.value||0}`;
+    if(img){
+      // re-fit box to new ratio, keep center
+      const cx = box.x + box.w/2, cy = box.y + box.h/2;
+      const ratio = currentRatio();
+      let bw = box.w, bh = bw/ratio;
+      if(bh > srcCanvas.height){ bh = srcCanvas.height*0.9; bw = bh*ratio; }
+      box = {x:cx-bw/2, y:cy-bh/2, w:bw, h:bh};
+      clampBox();
+      drawOverlay();
+      generatePreview();
+    }
+    updateSpecLive();
+  }
+  [wIn,hIn].forEach(el=>el.addEventListener('input', onSpecChange));
+  [fmtIn,kbMinIn,kbMaxIn].forEach(el=>el.addEventListener('input', ()=>{ updateSpecLive(); if(img) generatePreview(); }));
+
+  function updateSpecLive(){
+    const w = wIn.value||'—', h = hIn.value||'—';
+    spDims.textContent = `${w} × ${h} px`;
+    spFmt.textContent = fmtIn.value === 'image/png' ? 'PNG' : 'JPEG';
+  }
+  updateSpecLive();
+
+  // ---------- generate cropped/resized/compressed output ----------
+  let currentBlob = null;
+  let currentURL = null;
+
+  async function generatePreview(){
+    if(!img) return;
+    const outW = Math.max(1, parseInt(wIn.value)||1);
+    const outH = Math.max(1, parseInt(hIn.value)||1);
+    const fmt = fmtIn.value;
+    let minKB = Math.max(1, parseInt(kbMinIn.value)||1);
+    let maxKB = Math.max(1, parseInt(kbMaxIn.value)||1);
+    if(maxKB < minKB){ maxKB = minKB; kbMaxIn.value = maxKB; }
+
+    // crop from ORIGINAL resolution image, not the display canvas, for best quality
+    const scaleToOriginal = img.naturalWidth / srcCanvas.width;
+    const sx = box.x*scaleToOriginal, sy = box.y*scaleToOriginal;
+    const sw = box.w*scaleToOriginal, sh = box.h*scaleToOriginal;
+
+    // draws the crop onto a canvas and finds the highest quality that
+    // still fits under maxKB — the actual pixels are never altered
+    async function renderAt(){
+      const c = document.createElement('canvas');
+      c.width = outW; c.height = outH;
+      const cctx = c.getContext('2d');
+      if(fmt === 'image/jpeg'){
+        cctx.fillStyle = '#ffffff';
+        cctx.fillRect(0,0,outW,outH);
+      }
+      cctx.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
+
+      if(fmt === 'image/png'){
+        return await new Promise(res=>c.toBlob(res, 'image/png'));
+      }
+      let lo=0.05, hi=0.97, best=null;
+      for(let i=0;i<9;i++){
+        const q = (lo+hi)/2;
+        const b = await new Promise(res=>c.toBlob(res, 'image/jpeg', q));
+        if(b.size/1024 <= maxKB){ best = b; lo = q; } else { hi = q; }
+      }
+      return best || await new Promise(res=>c.toBlob(res, 'image/jpeg', 0.05));
+    }
+
+    // CRC32 for PNG chunk padding (standard PNG spec table-driven CRC)
+    let crcTable = null;
+    function crc32(bytes){
+      if(!crcTable){
+        crcTable = new Uint32Array(256);
+        for(let n=0;n<256;n++){
+          let c = n;
+          for(let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          crcTable[n] = c >>> 0;
+        }
+      }
+      let crc = 0xFFFFFFFF;
+      for(let i=0;i<bytes.length;i++) crc = crcTable[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+      return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+
+    // pads a JPEG by inserting invisible COM (comment) marker segments right
+    // after the SOI marker — no pixel is touched, viewers ignore comments
+    function padJpeg(bytes, targetBytes){
+      let needed = targetBytes - bytes.length;
+      if(needed <= 4) return bytes;
+      const segments = [];
+      while(needed > 4){
+        const payloadLen = Math.min(needed - 4, 65000);
+        if(payloadLen <= 0) break;
+        const segLen = payloadLen + 2;
+        const seg = new Uint8Array(4 + payloadLen);
+        seg[0]=0xFF; seg[1]=0xFE;
+        seg[2]=(segLen>>8)&0xFF; seg[3]=segLen&0xFF;
+        segments.push(seg);
+        needed -= seg.length;
+      }
+      const extra = segments.reduce((s,a)=>s+a.length,0);
+      const out = new Uint8Array(bytes.length + extra);
+      out[0]=bytes[0]; out[1]=bytes[1]; // FF D8 (SOI)
+      let off = 2;
+      for(const seg of segments){ out.set(seg, off); off += seg.length; }
+      out.set(bytes.subarray(2), off);
+      return out;
+    }
+
+    // pads a PNG by inserting a private ancillary chunk before IEND —
+    // decoders skip chunk types they don't recognize, so nothing renders differently
+    function padPng(bytes, targetBytes){
+      let needed = targetBytes - bytes.length - 12; // 12 = chunk overhead (len+type+crc)
+      if(needed <= 0) return bytes;
+      needed = Math.min(needed, 900000);
+      const typeBytes = new TextEncoder().encode('paTx'); // lowercase first letter = ancillary/private, safely ignorable
+      const data = new Uint8Array(needed);
+      const chunkLen = new Uint8Array(4);
+      new DataView(chunkLen.buffer).setUint32(0, needed, false);
+      const crcInput = new Uint8Array(4 + needed);
+      crcInput.set(typeBytes,0); crcInput.set(data,4);
+      const crc = crc32(crcInput);
+      const crcBytes = new Uint8Array(4);
+      new DataView(crcBytes.buffer).setUint32(0, crc, false);
+
+      // IEND is always the last 12 bytes of a valid PNG
+      const iendStart = bytes.length - 12;
+      const out = new Uint8Array(bytes.length + 12 + needed);
+      out.set(bytes.subarray(0, iendStart), 0);
+      let off = iendStart;
+      out.set(chunkLen, off); off+=4;
+      out.set(typeBytes, off); off+=4;
+      out.set(data, off); off+=needed;
+      out.set(crcBytes, off); off+=4;
+      out.set(bytes.subarray(iendStart), off);
+      return out;
+    }
+
+    let blob = await renderAt();
+    let padded = false;
+
+    if(blob.size/1024 < minKB){
+      const targetBytes = Math.min(Math.ceil(minKB*1024) + 256, Math.floor(maxKB*1024));
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let outBytes;
+      if(fmt === 'image/jpeg') outBytes = padJpeg(bytes, targetBytes);
+      else outBytes = padPng(bytes, targetBytes);
+      blob = new Blob([outBytes], {type: fmt});
+      padded = true;
+    }
+
+    currentBlob = blob;
+    if(currentURL) URL.revokeObjectURL(currentURL);
+    currentURL = URL.createObjectURL(blob);
+    previewImg.src = currentURL;
+    previewImg.style.width = Math.min(outW,260)+'px';
+    previewImg.style.height = 'auto';
+    previewBox.style.display = 'block';
+    previewCaption.textContent = `${outW}×${outH}px preview (shown at browser zoom, not actual pixel size)`;
+
+    const kb = blob.size/1024;
+    const inRange = kb >= minKB && kb <= maxKB;
+    if(inRange){
+      spSize.textContent = padded
+        ? `${kb.toFixed(1)} KB ✓ within ${minKB}–${maxKB}KB range (padded with invisible file data — image itself is unchanged)`
+        : `${kb.toFixed(1)} KB ✓ within ${minKB}–${maxKB}KB range`;
+    } else if(kb > maxKB){
+      spSize.textContent = `${kb.toFixed(1)} KB — exceeds ${maxKB}KB max (try smaller dimensions)`;
+    } else {
+      spSize.textContent = `${kb.toFixed(1)} KB — below ${minKB}KB min (try larger output dimensions)`;
+    }
+    spSize.parentElement.className = inRange ? 'ok' : 'warn';
+
+    saveCropBtn.disabled = false;
+  }
+
+  window.addEventListener('resize', ()=>{ if(img){ drawOverlay(); } });
+
+  // ---------- phone → laptop real-time transfer (WebRTC via PeerJS) ----------
+  const qrSendBtn = document.getElementById('qrSendBtn');
+  const qrModal = document.getElementById('qrModal');
+  const qrCloseBtn = document.getElementById('qrCloseBtn');
+  const qrCanvas = document.getElementById('qrCanvas');
+  const qrStatus = document.getElementById('qrStatus');
+  const phoneSendOverlay = document.getElementById('phoneSendOverlay');
+  const phoneSendStatus = document.getElementById('phoneSendStatus');
+  const phoneConnectSpinner = document.getElementById('phoneConnectSpinner');
+  const phoneActionButtons = document.getElementById('phoneActionButtons');
+  const phoneCameraInput = document.getElementById('phoneCameraInput');
+  const phoneGalleryInput = document.getElementById('phoneGalleryInput');
+  const phoneSentCount = document.getElementById('phoneSentCount');
+
+  const urlParams = new URLSearchParams(location.search);
+  const sendToPeerId = urlParams.get('send');
+
+  const ICE_CONFIG = {
+    iceServers: [
+      // STUN — free, just help both sides discover their public IP:port.
+      // Harmless to list several; the browser only uses what answers fastest.
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun.l.google.com:5349' },
+      { urls: 'stun:stun1.l.google.com:3478' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      // TURN — needed as a fallback ONLY when phone + laptop are on
+      // different networks and a direct path can't be found (e.g. phone on
+      // mobile data). Multiple ports/transports below so at least one gets
+      // through even on networks that block plain UDP or port 80/443 UDP.
+      { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+      { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' }
+    ]
+  };
+
+  // ---- OPTIONAL: real cross-network reliability ----
+  // The static credentials above are a free, anonymous, shared TURN relay.
+  // They're fine when phone + laptop are on the same network (no relay
+  // needed), but are known to be unreliable/rate-limited as the ONLY relay
+  // path when the two devices are on different networks (e.g. phone on
+  // mobile data, laptop on Wi-Fi) — that's exactly the "stuck on Connecting"
+  // case.
+  // Fix: get your own free TURN key (2 min, no card needed) from
+  // https://dashboard.metered.ca (Sign up → Realtime → TURN Credentials),
+  // then paste your app name + API key below. Every connection will then
+  // fetch fresh, working relay credentials instead of relying on the
+  // shared/overloaded ones. Leave blank to keep using the static fallback
+  // above (same-network only, effectively).
+  const METERED_APP_NAME = '';
+  const METERED_API_KEY = '';
+
+  async function getIceConfig(){
+    if(METERED_APP_NAME && METERED_API_KEY){
+      try{
+        const res = await fetch(`https://${METERED_APP_NAME}.metered.live/api/v1/turn/credentials?apiKey=${METERED_API_KEY}`);
+        if(res.ok){
+          const iceServers = await res.json();
+          if(Array.isArray(iceServers) && iceServers.length) return { iceServers };
+        }
+      }catch(e){ /* network hiccup fetching credentials — fall through */ }
+    }
+    return ICE_CONFIG;
+  }
+
+  if(typeof Peer === 'undefined'){
+    if(qrSendBtn){
+      qrSendBtn.disabled = true;
+      qrSendBtn.title = 'Connection library failed to load — check your internet connection.';
+    }
+  } else if(sendToPeerId){
+    // ---- THIS DEVICE IS THE PHONE (sender mode) ----
+    // Sends are now confirmed end-to-end: "Sent ✓" only appears after the laptop
+    // acknowledges receipt. If the link drops (screen lock, network switch, etc.)
+    // the peer reconnects automatically and any un-acknowledged photos are
+    // resent — no rescan needed unless the laptop's QR panel was fully closed.
+    document.body.classList.add('phone-mode');
+    phoneSendOverlay.style.display = 'flex';
+
+    let sentCount = 0;
+    let conn = null;
+    let myPeer = null;
+    let reconnectTimer = null;
+    let reconnectDelay = 1500;
+    const pending = []; // {id, meta, buf, tries}
+
+    function setStatus(text, kind){
+      phoneSendStatus.textContent = text;
+      phoneSendStatus.classList.remove('status-error','status-ok');
+      if(kind) phoneSendStatus.classList.add('status-' + kind);
+    }
+
+    let everConnected = false;
+    function showActionButtons(){
+      everConnected = true;
+      phoneConnectSpinner.style.display = 'none';
+      phoneActionButtons.classList.add('ready');
+    }
+
+    function flushPending(){
+      if(!conn || !conn.open || !pending.length) return;
+      let inFlight = 0;
+      pending.forEach(item=>{
+        if(item.tries > 0){ inFlight++; return; }
+        item.tries++;
+        conn.send({ type:'photo', id:item.id, meta:item.meta, buf:item.buf });
+        inFlight++;
+      });
+      if(inFlight) setStatus(`Sending ${inFlight} photo${inFlight===1?'':'s'}…`);
+    }
+
+    function scheduleReconnect(){
+      pending.forEach(p=>{ p.tries = 0; }); // will be resent once back online
+      if(reconnectTimer) return;
+      // Buttons stay visible once we've connected at least once — no need to
+      // hide them again on a brief drop, since taps just queue and flush.
+      setStatus(pending.length ? `Connection dropped — reconnecting to resend ${pending.length} photo${pending.length===1?'':'s'}…` : 'Connection dropped — reconnecting…');
+      reconnectTimer = setTimeout(()=>{
+        reconnectTimer = null;
+        connectToLaptop();
+      }, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 1.5, 8000);
+    }
+
+    function dial(){
+      if(conn && conn.open) return;
+      conn = myPeer.connect(sendToPeerId, {reliable:true});
+      // Same Wi-Fi should connect in a couple of seconds; different networks
+      // can take longer while ICE tries the TURN relay. Warn progressively
+      // instead of one long silent wait.
+      let slowTimer = setTimeout(()=>{
+        if(conn && !conn.open) setStatus('Still connecting… if this takes more than a few more seconds, make sure your phone and laptop are on the same Wi-Fi (fastest and works with no mobile data).');
+      }, 6000);
+      let connectTimeout = setTimeout(()=>{
+        if(conn && !conn.open){
+          setStatus("Still can't reach the laptop — this usually means the two devices are on different networks/firewalls. Put your phone on the SAME Wi-Fi as your laptop (or connect the laptop to your phone's hotspot), then rescan the QR code.", 'error');
+        }
+      }, 15000);
+      conn.on('open', ()=>{
+        clearTimeout(slowTimer);
+        clearTimeout(connectTimeout);
+        reconnectDelay = 1500;
+        showActionButtons();
+        setStatus(pending.length ? `Reconnected ✓ — resending ${pending.length} photo${pending.length===1?'':'s'}…` : 'Connected to laptop ✓ — take or choose a photo below.', 'ok');
+        flushPending();
+      });
+      conn.on('data', (data)=>{
+        if(data && data.type === 'ack'){
+          const idx = pending.findIndex(p=>p.id===data.id);
+          if(idx !== -1) pending.splice(idx,1);
+          sentCount++;
+          phoneSentCount.textContent = `${sentCount} photo${sentCount===1?'':'s'} sent this session.`;
+          setStatus(pending.length ? `Sent ✓ — ${pending.length} more sending…` : 'Sent ✓ — send another anytime, or check your laptop.', 'ok');
+        }
+      });
+      conn.on('close', ()=>{ clearTimeout(slowTimer); clearTimeout(connectTimeout); scheduleReconnect(); });
+      conn.on('error', ()=>{ clearTimeout(slowTimer); clearTimeout(connectTimeout); scheduleReconnect(); });
+    }
+
+    function connectToLaptop(){
+      if(!myPeer || myPeer.destroyed){
+        myPeer = 'connecting'; // guard against parallel connectToLaptop() calls while we await credentials
+        getIceConfig().then(cfg=>{
+          myPeer = new Peer(undefined, { config: cfg });
+          myPeer.on('open', dial);
+          myPeer.on('disconnected', ()=>{ if(!myPeer.destroyed) myPeer.reconnect(); });
+          myPeer.on('close', scheduleReconnect);
+          myPeer.on('error', (err)=>{
+            setStatus('Could not reach laptop (' + err.type + ') — retrying…', 'error');
+            scheduleReconnect();
+          });
+        });
+      } else if(myPeer.open){
+        dial();
+      }
+    }
+    connectToLaptop();
+
+    // if the phone's browser was backgrounded (e.g. while saving a downloaded
+    // photo) and the connection quietly died, retry as soon as it's foregrounded
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState === 'visible' && (!conn || !conn.open)){
+        reconnectDelay = 1500;
+        connectToLaptop();
+      }
+    });
+
+    async function sendFile(file){
+      if(!file) return;
+      const id = Date.now() + '-' + Math.random().toString(36).slice(2,8);
+      const buf = await file.arrayBuffer();
+      pending.push({ id, meta:{ name:file.name || 'phone-photo.jpg', type:file.type || 'image/jpeg' }, buf, tries:0 });
+      if(conn && conn.open){
+        flushPending();
+      } else {
+        setStatus('Not connected — will send automatically once reconnected…');
+        connectToLaptop();
+      }
+    }
+
+    phoneCameraInput.addEventListener('change', ()=>{
+      sendFile(phoneCameraInput.files[0]);
+      phoneCameraInput.value = '';
+    });
+    phoneGalleryInput.addEventListener('change', ()=>{
+      sendFile(phoneGalleryInput.files[0]);
+      phoneGalleryInput.value = '';
+    });
+
+  } else {
+    // ---- THIS DEVICE IS THE LAPTOP (receiver mode) ----
+    let hostPeer = null;
+    let receivedCount = 0;
+    const seenIds = new Set(); // avoids double-adding a photo if it gets resent before the ack arrives
+
+    let connecting = false;
+    qrSendBtn.addEventListener('click', async ()=>{
+      qrModal.style.display = 'flex';
+      if(hostPeer || connecting) return; // already running, just reopen the panel
+      connecting = true;
+      qrStatus.textContent = 'Generating code…';
+      const cfg = await getIceConfig();
+      hostPeer = new Peer(undefined, { config: cfg });
+
+      hostPeer.on('open', (id)=>{
+        const link = location.origin + location.pathname + '?send=' + id;
+        new QRious({ element: qrCanvas, value: link, size: 220 });
+        qrStatus.textContent = "Scan with your phone's camera app, then take or choose a photo there.";
+        setTimeout(()=>{
+          if(!qrStatus.textContent.startsWith('Phone connected') && !qrStatus.textContent.startsWith('Received')){
+            qrStatus.textContent = "Still waiting for the phone… if it's been a while, make sure your phone is on the SAME Wi-Fi as this laptop (or connect this laptop to your phone's hotspot) — that's the most common reason the connection never completes.";
+          }
+        }, 20000);
+      });
+
+      // "disconnected" means we lost the signalling channel (e.g. laptop woke
+      // from sleep, wifi blipped) — reconnect() rejoins with the SAME peer id,
+      // so the QR code / link already on the phone stays valid, no rescan needed.
+      hostPeer.on('disconnected', ()=>{
+        qrStatus.textContent = 'Reconnecting…';
+        if(!hostPeer.destroyed) hostPeer.reconnect();
+      });
+
+      hostPeer.on('connection', (conn)=>{
+        qrStatus.textContent = 'Phone connected ✓ — waiting for a photo…';
+        conn.on('data', (data)=>{
+          if(data && data.type === 'photo' && data.meta && data.buf){
+            conn.send({ type:'ack', id: data.id }); // confirm receipt back to phone immediately
+            if(seenIds.has(data.id)) return; // duplicate from a retry — already added
+            seenIds.add(data.id);
+            const blob = new Blob([data.buf], {type:data.meta.type || 'image/jpeg'});
+            receivedCount++;
+            qrStatus.textContent = `Received ${receivedCount} photo${receivedCount===1?'':'s'} from phone — added to the directory.`;
+            addItem(blob);
+          }
+        });
+        conn.on('close', ()=>{
+          qrStatus.textContent = 'Phone disconnected — it will reconnect automatically if it comes back online.';
+        });
+      });
+
+      hostPeer.on('error', (err)=>{
+        qrStatus.textContent = 'Connection service unavailable (' + err.type + '). Check your internet connection.';
+      });
+    });
+
+    qrCloseBtn.addEventListener('click', ()=>{ qrModal.style.display = 'none'; });
+  }
+
+})();
+</script>
+</body>
+</html>
